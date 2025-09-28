@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Micrositio educativo</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" integrity="sha384-5aCkNvztNFVQVw1Gc7YCOUMIqFZ3VAbwYSEuxsjjXNMTvEihQ/HUkNzxaz2QmiFj" crossorigin="anonymous" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body data-mode="auto">
+  <header class="topbar" aria-label="Cabecera del micrositio">
+    <div class="site-meta">
+      <h1 id="siteTitle">Micrositio educativo</h1>
+      <p id="siteSubtitle" class="muted">Subtítulo del sitio</p>
+    </div>
+    <div class="actions" role="group" aria-label="Acciones del sitio">
+      <button type="button" class="action" data-action="toggle-edit">Editar</button>
+      <button type="button" class="action" data-action="preview" hidden>Previsualizar</button>
+      <button type="button" class="action" data-action="save" hidden>Guardar</button>
+      <button type="button" class="action" data-action="export" hidden>Exportar JSON</button>
+      <label class="action action-file" data-action="import" hidden>
+        Importar JSON
+        <input type="file" accept="application/json" aria-label="Importar JSON" />
+      </label>
+      <button type="button" class="action" data-action="toggle-theme">Tema claro/oscuro</button>
+    </div>
+  </header>
+  <div class="layout">
+    <aside id="editorPanel" class="editor" aria-label="Panel de edición" hidden>
+      <section>
+        <h2>Datos del sitio</h2>
+        <label>
+          <span>Título</span>
+          <input type="text" data-bind="site.title" />
+        </label>
+        <label>
+          <span>Subtítulo</span>
+          <input type="text" data-bind="site.subtitle" />
+        </label>
+        <label>
+          <span>Descripción</span>
+          <textarea data-bind="site.description" rows="3"></textarea>
+        </label>
+      </section>
+      <section>
+        <h2>Tema</h2>
+        <label>
+          <span>Color primario</span>
+          <input type="color" data-bind="theme.color" />
+        </label>
+        <label>
+          <span>Color acento</span>
+          <input type="color" data-bind="theme.accent" />
+        </label>
+        <label>
+          <span>Escala tipográfica (rem)</span>
+          <input type="number" min="0.75" max="1.5" step="0.05" data-bind="theme.scale" />
+        </label>
+        <label>
+          <span>Fuente</span>
+          <select data-bind="theme.font">
+            <option value="system">Sistema</option>
+            <option value="Inter:wght@400;600">Inter</option>
+            <option value="Lato:wght@400;700">Lato</option>
+            <option value="Merriweather:wght@400;700">Merriweather</option>
+            <option value="Montserrat:wght@400;600">Montserrat</option>
+          </select>
+        </label>
+        <label>
+          <span>Distribución</span>
+          <select data-bind="theme.layout">
+            <option value="wide">Ancho</option>
+            <option value="narrow">Estrecho</option>
+          </select>
+        </label>
+        <label>
+          <span>Modo</span>
+          <select data-bind="theme.mode">
+            <option value="auto">Automático</option>
+            <option value="light">Claro</option>
+            <option value="dark">Oscuro</option>
+          </select>
+        </label>
+      </section>
+      <section>
+        <h2>Bloques</h2>
+        <p class="muted">Arrastra una píldora o haz clic para añadir.</p>
+        <ul class="palette" id="palette" aria-label="Paleta de bloques">
+          <li><button type="button" data-add="text">Texto</button></li>
+          <li><button type="button" data-add="image">Imagen</button></li>
+          <li><button type="button" data-add="audio">Audio</button></li>
+          <li><button type="button" data-add="youtube">YouTube</button></li>
+          <li><button type="button" data-add="pdf">PDF</button></li>
+          <li><button type="button" data-add="quote">Cita</button></li>
+          <li><button type="button" data-add="callout">Aviso</button></li>
+          <li><button type="button" data-add="gallery">Galería</button></li>
+          <li><button type="button" data-add="links">Lista de enlaces</button></li>
+        </ul>
+      </section>
+    </aside>
+    <main class="canvas" id="canvas">
+      <article class="content" id="content" aria-live="polite"></article>
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p id="siteDescription"></p>
+  </footer>
+  <div class="toast" role="status" aria-live="polite" hidden></div>
+  <script id="seed" type="application/json">
+    {
+      "site": {
+        "title": "Micrositio educativo",
+        "subtitle": "Introduce tu contenido",
+        "description": "Este micrositio muestra contenidos creados desde el modo edición."
+      },
+      "theme": {
+        "color": "#1f6feb",
+        "accent": "#ffb454",
+        "scale": 1,
+        "font": "system",
+        "layout": "wide",
+        "mode": "auto"
+      },
+      "sections": [
+        {
+          "title": "Contenido",
+          "blocks": [
+            {
+              "id": "b1",
+              "type": "text",
+              "markdown": "## ¡Hola!\n\nEste es un bloque de texto de ejemplo. Usa **negritas**, *itálicas* y enlaces [como este](https://example.com)."
+            }
+          ]
+        }
+      ]
+    }
+  </script>
+</body>
+</html>
