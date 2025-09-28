@@ -1,0 +1,27 @@
+{
+  "site": {
+    "title": "Micrositio educativo",
+    "subtitle": "Introduce tu contenido",
+    "description": "Este micrositio muestra contenidos creados desde el modo edición."
+  },
+  "theme": {
+    "color": "#1f6feb",
+    "accent": "#ffb454",
+    "scale": 1,
+    "font": "system",
+    "layout": "wide",
+    "mode": "auto"
+  },
+  "sections": [
+    {
+      "title": "Contenido",
+      "blocks": [
+        {
+          "id": "b1",
+          "type": "text",
+          "markdown": "## ¡Hola!\n\nEste es un bloque de texto de ejemplo. Usa **negritas**, *itálicas* y enlaces [como este](https://example.com)."
+        }
+      ]
+    }
+  ]
+}
