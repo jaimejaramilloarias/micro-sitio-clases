@@ -148,6 +148,18 @@ a:focus {
   padding: 1.5rem;
 }
 
+.layout.view-mode {
+  grid-template-columns: 1fr;
+}
+
+.layout.view-mode .canvas {
+  display: block;
+}
+
+.layout.view-mode .content {
+  max-width: 100%;
+}
+
 .editor {
   background: var(--bg-strong);
   border: 1px solid var(--border);
@@ -269,6 +281,106 @@ a:focus {
 .block-editor textarea,
 .block-editor input {
   width: 100%;
+}
+
+.text-editor-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.text-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.text-toolbar button {
+  border-radius: 0.6rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(31, 111, 235, 0.12);
+  color: inherit;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.text-toolbar button:hover,
+.text-toolbar button:focus {
+  background: rgba(31, 111, 235, 0.2);
+}
+
+.text-style-controls {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.text-style-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.text-style-inline {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.text-style-inline button {
+  flex-shrink: 0;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 0.6rem;
+  background: transparent;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.text-style-inline button:hover,
+.text-style-inline button:focus {
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.text-rich p,
+.text-rich li {
+  line-height: inherit;
+}
+
+.media-source-toggle {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.media-source-toggle legend {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.media-source-option {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.media-source-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.media-source-field[hidden] {
+  display: none;
+}
+
+.media-source-note {
+  font-size: 0.8rem;
+  color: var(--text-muted);
 }
 
 .block-preview p {
@@ -431,6 +543,10 @@ blockquote cite {
 @media (min-width: 1024px) {
   .layout {
     grid-template-columns: 320px 1fr;
+  }
+
+  .layout.view-mode {
+    grid-template-columns: 1fr;
   }
 }
 

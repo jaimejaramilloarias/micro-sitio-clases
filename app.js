@@ -1,6 +1,18 @@
 (() => {
   const STORAGE_KEY = 'micro-sitio-clases-content';
   const FONT_LINK_ID = 'dynamic-font';
+  const FONT_FALLBACK = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  const TEXT_FONT_CHOICES = [
+    { value: 'inherit', label: 'Heredar del tema', css: 'inherit' },
+    { value: 'inter', label: 'Inter (sans)', css: `'Inter', ${FONT_FALLBACK}`, link: 'Inter:wght@400;600' },
+    { value: 'lato', label: 'Lato (sans)', css: `'Lato', ${FONT_FALLBACK}`, link: 'Lato:wght@400;700' },
+    { value: 'merriweather', label: 'Merriweather (serif)', css: `'Merriweather', Georgia, "Times New Roman", serif`, link: 'Merriweather:wght@400;700' },
+    { value: 'montserrat', label: 'Montserrat (sans)', css: `'Montserrat', ${FONT_FALLBACK}`, link: 'Montserrat:wght@400;600' },
+    { value: 'serif', label: 'Serif clásica', css: "Georgia, 'Times New Roman', serif" },
+    { value: 'mono', label: 'Monoespaciada', css: "'Source Code Pro', 'Courier New', monospace", link: 'Source+Code+Pro:wght@400;600' }
+  ];
+  const loadedBlockFonts = new Set();
+
   const elements = {
     title: document.getElementById('siteTitle'),
     subtitle: document.getElementById('siteSubtitle'),
@@ -16,7 +28,8 @@
     export: document.querySelector('[data-action="export"]'),
     import: document.querySelector('[data-action="import"] input'),
     toggleTheme: document.querySelector('[data-action="toggle-theme"]'),
-    palette: document.getElementById('palette')
+    palette: document.getElementById('palette'),
+    layout: document.querySelector('.layout')
   };
 
   const BLOCK_LIBRARY = [
@@ -47,6 +60,71 @@
     bindActions();
     render();
     window.addEventListener('hashchange', handleHashChange);
+  }
+
+  function updateBlock(index, changes) {
+    const block = state.sections[0].blocks[index];
+    if (!block) return;
+    Object.assign(block, changes);
+    updateBlockPreview(index);
+    saveLocal();
+  }
+
+  function applyTextFormat(textarea, format, index) {
+    if (!textarea) return;
+    if (format === 'ul' || format === 'ol') {
+      applyListFormat(textarea, format, index);
+      return;
+    }
+    const start = textarea.selectionStart ?? 0;
+    const end = textarea.selectionEnd ?? 0;
+    const value = textarea.value;
+    const before = value.slice(0, start);
+    const selection = value.slice(start, end);
+    const after = value.slice(end);
+    let inserted = selection;
+    let selectStart = start;
+    let selectEnd = end;
+
+    if (format === 'bold') {
+      const content = selection || 'texto';
+      inserted = `**${content}**`;
+      selectStart = start + 2;
+      selectEnd = selectStart + content.length;
+    } else if (format === 'italic') {
+      const content = selection || 'texto';
+      inserted = `*${content}*`;
+      selectStart = start + 1;
+      selectEnd = selectStart + content.length;
+    }
+
+    textarea.value = before + inserted + after;
+    textarea.focus();
+    textarea.setSelectionRange(selectStart, selectEnd);
+    handleBlockInput(index, 'markdown', textarea.value);
+  }
+
+  function applyListFormat(textarea, format, index) {
+    const value = textarea.value;
+    let start = textarea.selectionStart ?? 0;
+    let end = textarea.selectionEnd ?? 0;
+    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+    const lineEndIndex = value.indexOf('\n', end);
+    const lineEnd = lineEndIndex === -1 ? value.length : lineEndIndex;
+    const selection = value.slice(lineStart, lineEnd) || 'Elemento de la lista';
+    const lines = selection.split(/\r?\n/);
+    let counter = 1;
+    const formatted = lines.map(line => {
+      const clean = line.replace(/^([-*]\s+|\d+\.\s+)/, '').trim();
+      const content = clean || `Elemento ${counter}`;
+      const output = format === 'ol' ? `${counter}. ${content}` : `- ${content}`;
+      counter += 1;
+      return output;
+    }).join('\n');
+    textarea.value = value.slice(0, lineStart) + formatted + value.slice(lineEnd);
+    textarea.focus();
+    textarea.setSelectionRange(lineStart, lineStart + formatted.length);
+    handleBlockInput(index, 'markdown', textarea.value);
   }
 
   function handleHashChange() {
@@ -102,15 +180,30 @@
     switch (normalized.type) {
       case 'text':
         normalized.markdown = block.markdown || '';
+        normalized.fontChoice = block.fontChoice || 'inherit';
+        normalized.fontSize = typeof block.fontSize === 'number' || typeof block.fontSize === 'string'
+          ? String(block.fontSize)
+          : '';
+        normalized.lineHeight = typeof block.lineHeight === 'number' || typeof block.lineHeight === 'string'
+          ? String(block.lineHeight)
+          : '';
+        normalized.textColor = block.textColor || '';
+        normalized.align = block.align || '';
         break;
       case 'image':
         normalized.src = block.src || '';
         normalized.alt = block.alt || '';
         normalized.caption = block.caption || '';
+        normalized.sourceMode = block.sourceMode || (normalized.src?.startsWith('data:') ? 'local' : 'repo');
+        normalized.sourceName = block.sourceName || '';
+        normalized.repoPath = block.repoPath || (normalized.sourceMode === 'repo' ? normalized.src : '');
         break;
       case 'audio':
         normalized.src = block.src || '';
         normalized.caption = block.caption || '';
+        normalized.sourceMode = block.sourceMode || (normalized.src?.startsWith('data:') ? 'local' : 'repo');
+        normalized.sourceName = block.sourceName || '';
+        normalized.repoPath = block.repoPath || (normalized.sourceMode === 'repo' ? normalized.src : '');
         break;
       case 'youtube':
         normalized.url = block.url || '';
@@ -119,6 +212,9 @@
       case 'pdf':
         normalized.src = block.src || '';
         normalized.caption = block.caption || '';
+        normalized.sourceMode = block.sourceMode || (normalized.src?.startsWith('data:') ? 'local' : 'repo');
+        normalized.sourceName = block.sourceName || '';
+        normalized.repoPath = block.repoPath || (normalized.sourceMode === 'repo' ? normalized.src : '');
         break;
       case 'quote':
         normalized.text = block.text || '';
@@ -311,15 +407,21 @@
     editor.dataset.index = String(index);
     switch (block.type) {
       case 'text':
-        editor.append(createTextarea('Contenido (Markdown)', 'markdown', block.markdown));
+        editor.append(renderTextEditor(block));
         break;
       case 'image':
-        editor.append(createInput('Ruta de la imagen', 'src', block.src));
+        editor.append(createMediaSourceToggle(block, index));
+        editor.append(createMediaRepoInput('Imagen en el repositorio (assets/images/...)', 'src', block, index, 'Ej: assets/images/diagrama.png'));
+        editor.append(createMediaLocalInput('Selecciona una imagen local', 'image/*', block, index));
+        setMediaSourceVisibility(editor, block.sourceMode || 'repo');
         editor.append(createInput('Texto alternativo', 'alt', block.alt));
         editor.append(createInput('Pie de foto', 'caption', block.caption));
         break;
       case 'audio':
-        editor.append(createInput('Ruta del audio', 'src', block.src));
+        editor.append(createMediaSourceToggle(block, index));
+        editor.append(createMediaRepoInput('Audio en el repositorio (assets/audios/...)', 'src', block, index, 'Ej: assets/audios/leccion.mp3'));
+        editor.append(createMediaLocalInput('Selecciona un audio local', 'audio/*', block, index));
+        setMediaSourceVisibility(editor, block.sourceMode || 'repo');
         editor.append(createInput('Descripción', 'caption', block.caption));
         break;
       case 'youtube':
@@ -327,7 +429,10 @@
         editor.append(createInput('Leyenda', 'caption', block.caption));
         break;
       case 'pdf':
-        editor.append(createInput('Ruta del PDF', 'src', block.src));
+        editor.append(createMediaSourceToggle(block, index));
+        editor.append(createMediaRepoInput('PDF en el repositorio (assets/pdfs/...)', 'src', block, index, 'Ej: assets/pdfs/apuntes.pdf'));
+        editor.append(createMediaLocalInput('Selecciona un PDF local', 'application/pdf,.pdf', block, index));
+        setMediaSourceVisibility(editor, block.sourceMode || 'repo');
         editor.append(createInput('Descripción', 'caption', block.caption));
         break;
       case 'quote':
@@ -347,12 +452,295 @@
     return editor;
   }
 
+  function renderTextEditor(block) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'text-editor-wrapper';
+    wrapper.append(createTextToolbar());
+    const textareaLabel = createTextarea('Contenido', 'markdown', block.markdown);
+    textareaLabel.classList.add('text-editor-area');
+    wrapper.append(textareaLabel);
+    wrapper.append(createTextStyleControls(block));
+    return wrapper;
+  }
+
+  function createTextToolbar() {
+    const toolbar = document.createElement('div');
+    toolbar.className = 'text-toolbar';
+    toolbar.setAttribute('role', 'group');
+    toolbar.setAttribute('aria-label', 'Formato rápido');
+    const buttons = [
+      { format: 'bold', label: 'Negrita' },
+      { format: 'italic', label: 'Itálica' },
+      { format: 'ul', label: 'Viñetas' },
+      { format: 'ol', label: 'Numerada' }
+    ];
+    buttons.forEach(btn => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = btn.label;
+      button.dataset.format = btn.format;
+      toolbar.append(button);
+    });
+    return toolbar;
+  }
+
+  function createTextStyleControls(block) {
+    const controls = document.createElement('div');
+    controls.className = 'text-style-controls';
+
+    const fontLabel = document.createElement('label');
+    fontLabel.textContent = 'Fuente';
+    const fontSelect = document.createElement('select');
+    fontSelect.name = 'fontChoice';
+    TEXT_FONT_CHOICES.forEach(option => {
+      const opt = document.createElement('option');
+      opt.value = option.value;
+      opt.textContent = option.label;
+      fontSelect.append(opt);
+    });
+    const initialFont = sanitizeFontChoice(block.fontChoice);
+    fontSelect.value = initialFont;
+    ensureFontChoiceLoaded(initialFont);
+    fontLabel.append(fontSelect);
+    controls.append(fontLabel);
+
+    const alignLabel = document.createElement('label');
+    alignLabel.textContent = 'Alineación';
+    const alignSelect = document.createElement('select');
+    alignSelect.name = 'align';
+    [
+      { value: '', label: 'Hereda del tema' },
+      { value: 'left', label: 'Izquierda' },
+      { value: 'center', label: 'Centrada' },
+      { value: 'right', label: 'Derecha' },
+      { value: 'justify', label: 'Justificada' }
+    ].forEach(opt => {
+      const option = document.createElement('option');
+      option.value = opt.value;
+      option.textContent = opt.label;
+      alignSelect.append(option);
+    });
+    alignSelect.value = sanitizeAlign(block.align);
+    alignLabel.append(alignSelect);
+    controls.append(alignLabel);
+
+    const sizeLabel = document.createElement('label');
+    sizeLabel.textContent = 'Tamaño (rem)';
+    const sizeWrapper = document.createElement('div');
+    sizeWrapper.className = 'text-style-inline';
+    const sizeInput = document.createElement('input');
+    sizeInput.type = 'number';
+    sizeInput.name = 'fontSize';
+    sizeInput.min = '0.6';
+    sizeInput.max = '3';
+    sizeInput.step = '0.05';
+    sizeInput.placeholder = '1 (tema)';
+    sizeInput.value = block.fontSize ? block.fontSize : '';
+    const sizeReset = document.createElement('button');
+    sizeReset.type = 'button';
+    sizeReset.dataset.action = 'reset-size';
+    sizeReset.textContent = 'Restablecer';
+    sizeWrapper.append(sizeInput, sizeReset);
+    sizeLabel.append(sizeWrapper);
+    controls.append(sizeLabel);
+
+    const lineHeightLabel = document.createElement('label');
+    lineHeightLabel.textContent = 'Interlineado';
+    const lineWrapper = document.createElement('div');
+    lineWrapper.className = 'text-style-inline';
+    const lineInput = document.createElement('input');
+    lineInput.type = 'number';
+    lineInput.name = 'lineHeight';
+    lineInput.min = '1';
+    lineInput.max = '3';
+    lineInput.step = '0.05';
+    lineInput.placeholder = '1.6 (auto)';
+    lineInput.value = block.lineHeight ? block.lineHeight : '';
+    const lineReset = document.createElement('button');
+    lineReset.type = 'button';
+    lineReset.dataset.action = 'reset-lineheight';
+    lineReset.textContent = 'Restablecer';
+    lineWrapper.append(lineInput, lineReset);
+    lineHeightLabel.append(lineWrapper);
+    controls.append(lineHeightLabel);
+
+    const colorLabel = document.createElement('label');
+    colorLabel.textContent = 'Color del texto';
+    const colorWrapper = document.createElement('div');
+    colorWrapper.className = 'text-style-inline';
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.name = 'textColor';
+    colorInput.value = block.textColor || '#1b1f24';
+    const colorReset = document.createElement('button');
+    colorReset.type = 'button';
+    colorReset.dataset.action = 'reset-color';
+    colorReset.textContent = 'Tema';
+    colorWrapper.append(colorInput, colorReset);
+    colorLabel.append(colorWrapper);
+    controls.append(colorLabel);
+
+    return controls;
+  }
+
+  function createMediaSourceToggle(block, index) {
+    const fieldset = document.createElement('fieldset');
+    fieldset.className = 'media-source-toggle';
+    const legend = document.createElement('legend');
+    legend.textContent = 'Origen del archivo';
+    fieldset.append(legend);
+    const modes = [
+      { value: 'repo', label: 'Repositorio (/assets/...)' },
+      { value: 'local', label: 'Archivo local (se incrusta)' }
+    ];
+    modes.forEach(mode => {
+      const label = document.createElement('label');
+      label.className = 'media-source-option';
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = `media-source-${block.id}`;
+      input.value = mode.value;
+      input.checked = (block.sourceMode || 'repo') === mode.value;
+      input.addEventListener('change', () => {
+        if (!input.checked) return;
+        updateBlock(index, { sourceMode: mode.value });
+        const editor = fieldset.closest('.block-editor');
+        if (editor) {
+          setMediaSourceVisibility(editor, mode.value);
+        }
+      });
+      label.append(input, document.createTextNode(mode.label));
+      fieldset.append(label);
+    });
+    return fieldset;
+  }
+
+  function createMediaRepoInput(labelText, name, block, index, hintText) {
+    const label = document.createElement('label');
+    label.className = 'media-source-field';
+    label.dataset.sourceMode = 'repo';
+    label.textContent = labelText;
+    const input = document.createElement('input');
+    input.name = name;
+    input.placeholder = 'assets/...';
+    input.value = block.sourceMode === 'repo' ? (block.repoPath || block.src || '') : (block.repoPath || '');
+    input.addEventListener('input', evt => {
+      updateBlock(index, {
+        src: evt.target.value,
+        repoPath: evt.target.value,
+        sourceMode: 'repo',
+        sourceName: ''
+      });
+    });
+    label.append(input);
+    const hint = document.createElement('span');
+    hint.className = 'media-source-note';
+    hint.textContent = hintText || 'Ej: assets/archivo.ext';
+    label.append(hint);
+    return label;
+  }
+
+  function createMediaLocalInput(labelText, accept, block, index) {
+    const label = document.createElement('label');
+    label.className = 'media-source-field';
+    label.dataset.sourceMode = 'local';
+    label.textContent = labelText;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = accept;
+    input.addEventListener('change', event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        const result = typeof e.target?.result === 'string' ? e.target.result : '';
+        if (!result) return;
+        updateBlock(index, {
+          src: result,
+          sourceMode: 'local',
+          sourceName: file.name
+        });
+        const editor = label.closest('.block-editor');
+        if (editor) {
+          setMediaSourceVisibility(editor, 'local');
+          const status = editor.querySelector('.media-local-status');
+          if (status) {
+            status.textContent = `Archivo actual: ${file.name}`;
+          }
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    label.append(input);
+    const status = document.createElement('span');
+    status.className = 'media-source-note media-local-status';
+    status.textContent = block.sourceMode === 'local' && block.sourceName
+      ? `Archivo actual: ${block.sourceName}`
+      : 'El archivo se guardará incrustado en el JSON';
+    label.append(status);
+    return label;
+  }
+
+  function setMediaSourceVisibility(editor, mode) {
+    editor.querySelectorAll('.media-source-field').forEach(field => {
+      field.hidden = field.dataset.sourceMode !== mode;
+    });
+    const repoField = editor.querySelector('.media-source-field[data-source-mode="repo"] input[name="src"]');
+    if (mode === 'repo' && repoField) {
+      repoField.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+
   function bindBlockInputs() {
     elements.content.querySelectorAll('.block-editor').forEach(editor => {
       const index = Number(editor.dataset.index);
-      editor.querySelectorAll('input, textarea').forEach(input => {
-        input.addEventListener('input', evt => {
+      editor.querySelectorAll('input, textarea, select').forEach(input => {
+        if (input.type === 'file') return;
+        const handler = evt => {
           handleBlockInput(index, evt.target.name, evt.target.value);
+        };
+        input.addEventListener('input', handler);
+        if (input.tagName === 'SELECT') {
+          input.addEventListener('change', handler);
+        }
+      });
+
+      editor.querySelectorAll('[data-format]').forEach(button => {
+        button.addEventListener('click', evt => {
+          evt.preventDefault();
+          const textarea = editor.querySelector('textarea[name="markdown"]');
+          if (!textarea) return;
+          applyTextFormat(textarea, button.dataset.format, index);
+        });
+      });
+
+      editor.querySelectorAll('[data-action="reset-color"]').forEach(button => {
+        button.addEventListener('click', evt => {
+          evt.preventDefault();
+          const input = editor.querySelector('input[name="textColor"]');
+          if (!input) return;
+          input.value = '#1b1f24';
+          handleBlockInput(index, 'textColor', '');
+        });
+      });
+
+      editor.querySelectorAll('[data-action="reset-size"]').forEach(button => {
+        button.addEventListener('click', evt => {
+          evt.preventDefault();
+          const input = editor.querySelector('input[name="fontSize"]');
+          if (!input) return;
+          input.value = '';
+          handleBlockInput(index, 'fontSize', '');
+        });
+      });
+
+      editor.querySelectorAll('[data-action="reset-lineheight"]').forEach(button => {
+        button.addEventListener('click', evt => {
+          evt.preventDefault();
+          const input = editor.querySelector('input[name="lineHeight"]');
+          if (!input) return;
+          input.value = '';
+          handleBlockInput(index, 'lineHeight', '');
         });
       });
     });
@@ -371,14 +759,51 @@
     const block = blocks[index];
     if (!block) return;
     if (block.type === 'gallery' && field === 'items') {
-      block.items = parseGallery(value);
-    } else if (block.type === 'links' && field === 'items') {
-      block.items = parseLinks(value);
-    } else {
-      block[field] = value;
+      updateBlock(index, { items: parseGallery(value) });
+      return;
     }
-    updateBlockPreview(index);
-    saveLocal();
+    if (block.type === 'links' && field === 'items') {
+      updateBlock(index, { items: parseLinks(value) });
+      return;
+    }
+    if (block.type === 'text') {
+      switch (field) {
+        case 'fontChoice': {
+          const fontChoice = sanitizeFontChoice(value);
+          ensureFontChoiceLoaded(fontChoice);
+          updateBlock(index, { fontChoice });
+          return;
+        }
+        case 'fontSize': {
+          updateBlock(index, { fontSize: sanitizeNumber(value, 0.6, 3) });
+          return;
+        }
+        case 'lineHeight': {
+          updateBlock(index, { lineHeight: sanitizeNumber(value, 1, 3) });
+          return;
+        }
+        case 'textColor': {
+          updateBlock(index, { textColor: sanitizeColor(value) });
+          return;
+        }
+        case 'align': {
+          updateBlock(index, { align: sanitizeAlign(value) });
+          return;
+        }
+        default:
+          break;
+      }
+    }
+    if ((block.type === 'image' || block.type === 'audio' || block.type === 'pdf') && field === 'src') {
+      updateBlock(index, {
+        src: value,
+        repoPath: value,
+        sourceMode: 'repo',
+        sourceName: ''
+      });
+      return;
+    }
+    updateBlock(index, { [field]: value });
   }
 
   function updateBlockPreview(index) {
@@ -394,7 +819,7 @@
   function renderBlockView(block) {
     switch (block.type) {
       case 'text':
-        return markdownToHtml(block.markdown || '');
+        return textBlockHtml(block);
       case 'image':
         return `<figure>${mediaImage(block)}</figure>`;
       case 'audio':
@@ -422,6 +847,40 @@
     const src = escapeHtml(block.src || '');
     if (!src) return '<div class="media-fallback">[Imagen no encontrada]</div>';
     return `<img src="${src}" alt="${alt}" loading="lazy" data-fallback="image" />${caption ? `<figcaption>${caption}</figcaption>` : ''}`;
+  }
+
+  function textBlockHtml(block) {
+    const fontChoice = sanitizeFontChoice(block.fontChoice);
+    ensureFontChoiceLoaded(fontChoice);
+    const style = buildTextBlockStyle(block);
+    const styleAttr = style ? ` style="${escapeHtml(style)}"` : '';
+    const content = markdownToHtml(block.markdown || '');
+    return `<div class="text-rich"${styleAttr}>${content}</div>`;
+  }
+
+  function buildTextBlockStyle(block) {
+    const styles = [];
+    const fontCss = fontChoiceToCss(sanitizeFontChoice(block.fontChoice));
+    if (fontCss && fontCss !== 'inherit') {
+      styles.push(`font-family: ${fontCss}`);
+    }
+    const fontSize = sanitizeNumber(block.fontSize, 0.6, 3);
+    if (fontSize) {
+      styles.push(`font-size: ${fontSize}rem`);
+    }
+    const lineHeight = sanitizeNumber(block.lineHeight, 1, 3);
+    if (lineHeight) {
+      styles.push(`line-height: ${lineHeight}`);
+    }
+    const color = sanitizeColor(block.textColor);
+    if (color) {
+      styles.push(`color: ${color}`);
+    }
+    const align = sanitizeAlign(block.align);
+    if (align) {
+      styles.push(`text-align: ${align}`);
+    }
+    return styles.join('; ');
   }
 
   function mediaAudio(block) {
@@ -700,6 +1159,9 @@
       elements.import?.closest('label').removeAttribute('hidden');
       elements.toggleEdit.textContent = 'Salir de edición';
       elements.body.classList.toggle('preview-mode', previewMode);
+      elements.body.classList.add('is-editing');
+      elements.body.classList.remove('is-viewing');
+      elements.layout?.classList.remove('view-mode');
     } else {
       elements.editor.hidden = true;
       elements.preview.hidden = true;
@@ -710,6 +1172,9 @@
       elements.toggleEdit.textContent = 'Editar';
       elements.body.classList.remove('preview-mode');
       previewMode = false;
+      elements.body.classList.remove('is-editing');
+      elements.body.classList.add('is-viewing');
+      elements.layout?.classList.add('view-mode');
     }
   }
 
@@ -722,8 +1187,7 @@
     root.style.setProperty('--accent', theme.accent);
     root.style.setProperty('--fs', `${theme.scale || 1}rem`);
     const fontFamily = theme.font && theme.font !== 'system' ? theme.font.split(':')[0] : null;
-    const fallbackFont = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-    root.style.setProperty('--font', fontFamily ? `'${fontFamily}', ${fallbackFont}` : fallbackFont);
+    root.style.setProperty('--font', fontFamily ? `'${fontFamily}', ${FONT_FALLBACK}` : FONT_FALLBACK);
     root.dataset.mode = mode;
     elements.body.dataset.mode = mode;
 
@@ -840,43 +1304,58 @@
     const escaped = escapeHtml(markdown);
     const lines = escaped.split(/\r?\n/);
     let html = '';
-    let inList = false;
+    let listType = '';
     lines.forEach(line => {
       if (!line.trim()) {
-        if (inList) {
-          html += '</ul>';
-          inList = false;
+        if (listType) {
+          html += listType === 'ol' ? '</ol>' : '</ul>';
+          listType = '';
         }
         return;
       }
       const heading = line.match(/^(#{1,3})\s+(.*)$/);
       if (heading) {
-        if (inList) {
-          html += '</ul>';
-          inList = false;
+        if (listType) {
+          html += listType === 'ol' ? '</ol>' : '</ul>';
+          listType = '';
         }
         const level = Math.min(heading[1].length, 3);
         const tag = `h${level}`;
         html += `<${tag}>${formatInline(heading[2])}</${tag}>`;
         return;
       }
-      const list = line.match(/^[-*]\s+(.*)$/);
-      if (list) {
-        if (!inList) {
-          html += '<ul>';
-          inList = true;
+      const ordered = line.match(/^(\d+)\.\s+(.*)$/);
+      if (ordered) {
+        if (listType !== 'ol') {
+          if (listType) {
+            html += listType === 'ol' ? '</ol>' : '</ul>';
+          }
+          html += '<ol>';
+          listType = 'ol';
         }
-        html += `<li>${formatInline(list[1])}</li>`;
+        html += `<li>${formatInline(ordered[2])}</li>`;
         return;
       }
-      if (inList) {
-        html += '</ul>';
-        inList = false;
+      const unordered = line.match(/^[-*]\s+(.*)$/);
+      if (unordered) {
+        if (listType !== 'ul') {
+          if (listType) {
+            html += listType === 'ol' ? '</ol>' : '</ul>';
+          }
+          html += '<ul>';
+          listType = 'ul';
+        }
+        html += `<li>${formatInline(unordered[1])}</li>`;
+        return;
+      }
+      if (listType) {
+        html += listType === 'ol' ? '</ol>' : '</ul>';
+        listType = '';
       }
       html += `<p>${formatInline(line)}</p>`;
     });
-    if (inList) {
-      html += '</ul>';
+    if (listType) {
+      html += listType === 'ol' ? '</ol>' : '</ul>';
     }
     return html || '<p></p>';
   }
@@ -886,6 +1365,55 @@
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
       .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  }
+
+  function sanitizeNumber(value, min, max) {
+    if (value === null || value === undefined || value === '') return '';
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '';
+    const clamped = clamp(num, min, max);
+    return Number.isInteger(clamped) ? String(clamped) : String(Number(clamped.toFixed(2)));
+  }
+
+  function sanitizeColor(value) {
+    if (typeof value !== 'string') return '';
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed) ? trimmed : '';
+  }
+
+  function sanitizeAlign(value) {
+    const allowed = new Set(['left', 'center', 'right', 'justify']);
+    return allowed.has(value) ? value : '';
+  }
+
+  function sanitizeFontChoice(value) {
+    const match = TEXT_FONT_CHOICES.find(option => option.value === value);
+    return match ? match.value : 'inherit';
+  }
+
+  function fontChoiceToCss(choice) {
+    const option = TEXT_FONT_CHOICES.find(opt => opt.value === choice);
+    if (!option) return null;
+    if (option.value === 'inherit') return null;
+    return option.css;
+  }
+
+  function ensureFontChoiceLoaded(choice) {
+    const option = TEXT_FONT_CHOICES.find(opt => opt.value === choice);
+    if (!option || !option.link) return;
+    if (loadedBlockFonts.has(option.link)) return;
+    const id = `block-font-${option.value}`;
+    if (document.getElementById(id)) {
+      loadedBlockFonts.add(option.link);
+      return;
+    }
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.id = id;
+    link.href = `https://fonts.googleapis.com/css2?family=${option.link}&display=swap`;
+    document.head.append(link);
+    loadedBlockFonts.add(option.link);
   }
 
   function escapeHtml(value) {
@@ -1013,6 +1541,10 @@
 
   function createId() {
     return 'b-' + Math.random().toString(36).slice(2, 8);
+  }
+
+  function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
   }
 
 })();
