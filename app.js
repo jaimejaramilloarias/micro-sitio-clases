@@ -197,6 +197,7 @@
         normalized.sourceMode = block.sourceMode || (normalized.src?.startsWith('data:') ? 'local' : 'repo');
         normalized.sourceName = block.sourceName || '';
         normalized.repoPath = block.repoPath || (normalized.sourceMode === 'repo' ? normalized.src : '');
+        normalized.width = sanitizeNumber(block.width, 10, 100);
         break;
       case 'audio':
         normalized.src = block.src || '';
@@ -416,6 +417,7 @@
         setMediaSourceVisibility(editor, block.sourceMode || 'repo');
         editor.append(createInput('Texto alternativo', 'alt', block.alt));
         editor.append(createInput('Pie de foto', 'caption', block.caption));
+        editor.append(createImageSizeInput(block));
         break;
       case 'audio':
         editor.append(createMediaSourceToggle(block, index));
@@ -681,6 +683,33 @@
     return label;
   }
 
+  function createImageSizeInput(block) {
+    const label = document.createElement('label');
+    label.textContent = 'Ancho máximo (%)';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'inline-field';
+    const input = document.createElement('input');
+    input.name = 'width';
+    input.type = 'number';
+    input.min = '10';
+    input.max = '100';
+    input.step = '5';
+    input.placeholder = '100';
+    input.value = block.width || '';
+    wrapper.append(input);
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.dataset.action = 'reset-image-width';
+    reset.textContent = 'Restablecer';
+    wrapper.append(reset);
+    label.append(wrapper);
+    const hint = document.createElement('small');
+    hint.className = 'field-hint';
+    hint.textContent = 'Deja vacío para ocupar el ancho completo del bloque.';
+    label.append(hint);
+    return label;
+  }
+
   function setMediaSourceVisibility(editor, mode) {
     editor.querySelectorAll('.media-source-field').forEach(field => {
       field.hidden = field.dataset.sourceMode !== mode;
@@ -743,6 +772,16 @@
           handleBlockInput(index, 'lineHeight', '');
         });
       });
+
+      editor.querySelectorAll('[data-action="reset-image-width"]').forEach(button => {
+        button.addEventListener('click', evt => {
+          evt.preventDefault();
+          const input = editor.querySelector('input[name="width"]');
+          if (!input) return;
+          input.value = '';
+          handleBlockInput(index, 'width', '');
+        });
+      });
     });
 
     elements.content.querySelectorAll('.add-between button').forEach(btn => {
@@ -803,6 +842,15 @@
       });
       return;
     }
+    if (block.type === 'image' && field === 'width') {
+      const sanitized = sanitizeNumber(value, 10, 100);
+      updateBlock(index, { width: sanitized });
+      const editor = elements.content.querySelector(`.block-editor[data-index="${index}"] input[name="width"]`);
+      if (editor && editor.value !== sanitized) {
+        editor.value = sanitized;
+      }
+      return;
+    }
     updateBlock(index, { [field]: value });
   }
 
@@ -821,7 +869,7 @@
       case 'text':
         return textBlockHtml(block);
       case 'image':
-        return `<figure>${mediaImage(block)}</figure>`;
+        return mediaImage(block);
       case 'audio':
         return `<div>${mediaAudio(block)}</div>`;
       case 'youtube':
@@ -846,7 +894,14 @@
     const caption = escapeHtml(block.caption || '');
     const src = escapeHtml(block.src || '');
     if (!src) return '<div class="media-fallback">[Imagen no encontrada]</div>';
-    return `<img src="${src}" alt="${alt}" loading="lazy" data-fallback="image" />${caption ? `<figcaption>${caption}</figcaption>` : ''}`;
+    const width = sanitizeNumber(block.width, 10, 100);
+    const figureStyles = [];
+    if (width) {
+      figureStyles.push(`width: ${width}%`);
+      figureStyles.push('margin-inline: auto');
+    }
+    const figureAttr = figureStyles.length ? ` style="${escapeHtml(figureStyles.join('; '))}"` : '';
+    return `<figure${figureAttr}><img src="${src}" alt="${alt}" loading="lazy" data-fallback="image" />${caption ? `<figcaption>${caption}</figcaption>` : ''}</figure>`;
   }
 
   function textBlockHtml(block) {
@@ -1077,7 +1132,7 @@
     const id = createId();
     switch (type) {
       case 'image':
-        return { id, type, src: '', alt: '', caption: '' };
+        return { id, type, src: '', alt: '', caption: '', width: '' };
       case 'audio':
         return { id, type, src: '', caption: '' };
       case 'youtube':
