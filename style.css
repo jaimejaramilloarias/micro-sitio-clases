@@ -153,11 +153,16 @@ a:focus {
 }
 
 .layout.view-mode .canvas {
-  display: block;
+  display: flex;
+  justify-content: center;
+  width: 100%;
 }
 
 .layout.view-mode .content {
-  max-width: 100%;
+  max-width: min(960px, 100%);
+  margin: 0 auto;
+  width: 100%;
+  padding-inline: clamp(1rem, 5vw, 2.5rem);
 }
 
 .editor {
